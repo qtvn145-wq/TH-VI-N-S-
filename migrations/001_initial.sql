@@ -1,0 +1,18 @@
+PRAGMA foreign_keys=ON;
+BEGIN IMMEDIATE;
+CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('reader','librarian')));
+CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),expires_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS authors(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS books(id INTEGER PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',cover_url TEXT);
+CREATE TABLE IF NOT EXISTS book_authors(book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,author_id INTEGER REFERENCES authors(id),PRIMARY KEY(book_id,author_id));
+CREATE TABLE IF NOT EXISTS book_categories(book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,category_id INTEGER REFERENCES categories(id),PRIMARY KEY(book_id,category_id));
+CREATE TABLE IF NOT EXISTS copies(id INTEGER PRIMARY KEY,book_id INTEGER NOT NULL REFERENCES books(id),barcode TEXT NOT NULL UNIQUE,retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN (0,1)));
+CREATE TABLE IF NOT EXISTS loans(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),copy_id INTEGER NOT NULL REFERENCES copies(id),status TEXT NOT NULL CHECK(status IN ('reserved','borrowed','returned','cancelled')),reserved_at TEXT NOT NULL,borrowed_at TEXT,due_date TEXT,returned_at TEXT,daily_fine INTEGER NOT NULL CHECK(daily_fine>=0));
+CREATE UNIQUE INDEX IF NOT EXISTS active_copy ON loans(copy_id) WHERE status IN ('reserved','borrowed');
+CREATE INDEX IF NOT EXISTS user_loans ON loans(user_id,status);
+CREATE TABLE IF NOT EXISTS fines(id INTEGER PRIMARY KEY,loan_id INTEGER NOT NULL UNIQUE REFERENCES loans(id),amount INTEGER NOT NULL CHECK(amount>=0),paid_at TEXT);
+CREATE TABLE IF NOT EXISTS waitlist(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),book_id INTEGER NOT NULL REFERENCES books(id),created_at TEXT NOT NULL,UNIQUE(user_id,book_id));
+CREATE TABLE IF NOT EXISTS reminders(loan_id INTEGER REFERENCES loans(id),day TEXT NOT NULL,sent_at TEXT NOT NULL,PRIMARY KEY(loan_id,day));
+PRAGMA user_version=1;
+COMMIT;
