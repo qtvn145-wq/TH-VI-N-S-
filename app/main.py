@@ -41,6 +41,11 @@ def today(): return now().astimezone(ZoneInfo('Asia/Ho_Chi_Minh')).date()
 
 def loan_out(row):
     row = dict(row)
+    # Add display fields; permission filtering remains in the existing endpoints.
+    with connect() as lookup:
+        display = lookup.execute('SELECT b.id AS book_id,b.title AS book_title,c.barcode,u.name AS reader_name FROM copies c JOIN books b ON b.id=c.book_id JOIN users u ON u.id=? WHERE c.id=?', (row['user_id'],row['copy_id'])).fetchone()
+        if display:
+            row.update(dict(display))
     end = date.fromisoformat(row['returned_at'][:10]) if row['returned_at'] else today()
     days = max(0,(end-date.fromisoformat(row['due_date'])).days) if row['due_date'] else 0
     row.update(overdue_days=days,estimated_fine=days*row['daily_fine'])

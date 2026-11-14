@@ -53,6 +53,10 @@ class BookOut(BaseModel):
     available_copies: int
 
 class LoanOut(BaseModel):
+    book_id: int | None = None
+    book_title: str | None = None
+    barcode: str | None = None
+    reader_name: str | None = None
     id: int
     user_id: int
     copy_id: int
