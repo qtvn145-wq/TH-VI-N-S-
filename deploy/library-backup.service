@@ -1,0 +1,9 @@
+[Unit]
+Description=Library backup
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/library-backup.env
+WorkingDirectory=/opt/thu-vien-so
+ExecStart=/bin/bash /opt/thu-vien-so/scripts/ops.sh backup

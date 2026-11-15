@@ -1,0 +1,20 @@
+Pre-publication validation: 2026-11-15
+Base main: c9b1f740a00a7b04496762e8d1f18bfb5c5a84fb
+Verified branch ancestry: back-end de72c29 and front-end 50767aa already merged in main.
+
+PASS: 16 Python unittest cases (12 business + 4 DevOps).
+PASS: qa/integration_test.py, including frontend routes, loan flow, media and OpenAPI equality.
+PASS: Node API client tests.
+PASS: Docker Compose v2.39.4 config --quiet: base, production, local HTTPS, tunnel.
+PASS: YAML parsing, Bash syntax, local README links, git diff --check.
+PASS: Backup/restore database and cover bytes; refuses overwrite.
+PASS: Mock SMTP validates secret-file login, Gmail space normalization, daily deduplication.
+
+Not executed in this validation environment: Docker daemon/image builds,
+public HTTPS, real SMTP delivery, SSH deployment, offsite rsync, systemd installation.
+The user separately reported a working public tunnel and supplied successful
+local port 8081 / smoke / monitor output. These are user-machine observations,
+not automated test results for this commit.
+
+GitHub Actions results are recorded in the repository Actions tab after publication.
+Push to main runs verification only; deploy requires manual workflow_dispatch.

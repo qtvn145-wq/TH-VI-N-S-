@@ -1,0 +1,7 @@
+[Unit]
+Description=Library health disk and backup monitor
+After=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/thu-vien-so
+ExecStart=/bin/bash /opt/thu-vien-so/scripts/monitor.sh

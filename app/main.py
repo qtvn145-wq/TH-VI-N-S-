@@ -25,7 +25,8 @@ Image.MAX_IMAGE_PIXELS = 16_000_000
 
 @asynccontextmanager
 async def lifespan(app):
-    migrate()
+    if os.getenv("AUTO_MIGRATE", "true").lower() == "true":
+        migrate()
     yield
 
 app = FastAPI(title='Thư viện số Khoa CNTT', version='1.0.0', lifespan=lifespan, responses={code: {'model': ErrorOut} for code in (401,403,404,409,413,415)},
@@ -67,7 +68,10 @@ def relations(db,id,p):
 
 @app.get('/api/v1/health',response_model=HealthOut,tags=['System'])
 def health():
-    with connect() as db: db.execute('SELECT 1')
+    with connect() as db:
+        db.execute('SELECT id FROM users LIMIT 1')
+        if db.execute('PRAGMA user_version').fetchone()[0] != 1:
+            raise HTTPException(503, 'SCHEMA_NOT_READY')
     return {'status':'ok'}
 
 @app.post('/api/v1/auth/register',response_model=UserOut,status_code=201,tags=['Auth'])

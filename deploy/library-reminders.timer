@@ -1,0 +1,7 @@
+[Unit]
+Description=Schedule library reminders
+[Timer]
+OnCalendar=*-*-* 08:00:00 Asia/Ho_Chi_Minh
+Persistent=true
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Library reminders
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/thu-vien-so
+ExecStart=/bin/bash /opt/thu-vien-so/scripts/ops.sh reminders

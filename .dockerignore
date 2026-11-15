@@ -1,0 +1,13 @@
+.git
+.env*
+secrets
+backups
+data
+.venv
+**/__pycache__
+**/*:Zone.Identifier
+*.zip
+
+*.key
+*.pem
+library-local-root.crt

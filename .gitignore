@@ -11,3 +11,12 @@ dist/
 *.sqlite
 *.sqlite3
 *:Zone.Identifier
+
+secrets/
+backups/
+.ops.lock
+
+# Local TLS artifacts
+library-local-root.crt
+*.key
+*.pem

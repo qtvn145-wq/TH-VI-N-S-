@@ -24,7 +24,7 @@ def seed():
             for j in range(0 if i==8 else 3): db.execute('INSERT INTO copies(book_id,barcode) VALUES (?,?)',(i,f'CNTT-{i:03}-{j+1:03}'))
         now=datetime.now(timezone.utc)
         db.execute("INSERT INTO loans(user_id,copy_id,status,reserved_at,borrowed_at,due_date,daily_fine) VALUES (1,1,'borrowed',?,?,?,2000)",((now-timedelta(days=19)).isoformat(),(now-timedelta(days=18)).isoformat(),(now-timedelta(days=4)).date().isoformat()))
-    print('Demo ready. Accounts and password: see FRONTEND_README.md')
+    print('Demo ready. Accounts and password: see README.md')
 
 if __name__=='__main__':
     seed()

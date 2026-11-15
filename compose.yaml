@@ -1,0 +1,77 @@
+name: thu-vien-so
+x-app: &app
+  image: thu-vien-api:${IMAGE_TAG:-local}
+  build: .
+  environment: &env
+    DATABASE_PATH: /data/library.db
+    MEDIA_DIR: /data/covers
+    LOAN_DAYS: ${LOAN_DAYS:-14}
+    DAILY_FINE: ${DAILY_FINE:-2000}
+    CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8081}
+    AUTO_MIGRATE: "false"
+  volumes:
+    - library_data:/data
+  init: true
+  logging: &logs
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+services:
+  migrate:
+    <<: *app
+    command: [python, -m, app.cli, init]
+    restart: "no"
+  backend:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+  web:
+    image: thu-vien-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:${HTTP_PORT:-8081}:80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logs
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/api/v1/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  reminders:
+    <<: *app
+    profiles: [ops]
+    environment:
+      <<: *env
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [smtp_password]
+    command: [python, -m, app.cli, reminders]
+  maintenance:
+    <<: *app
+    profiles: [ops]
+    user: "0:0"
+    volumes:
+      - library_data:/data
+      - ${BACKUP_DIR:-./backups}:/backups
+    command: [python, scripts/backup.py, backup]
+secrets:
+  smtp_password:
+    file: ./secrets/smtp_password.txt
+volumes:
+  library_data:

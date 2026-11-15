@@ -5,12 +5,22 @@ import json
 import os
 import smtplib
 import ssl
+from pathlib import Path
 from datetime import timedelta
 from email.message import EmailMessage
 from .db import connect, migrate
 from .security import password_hash, now
 from .schemas import Registration
 from .main import today
+
+def smtp_password():
+    value = (Path(os.environ['SMTP_PASSWORD_FILE']).read_text().rstrip('\r\n')
+             if os.getenv('SMTP_PASSWORD_FILE') else os.environ['SMTP_PASSWORD'])
+    # Gmail displays app passwords in groups; preserve spaces for other providers.
+    if os.getenv('SMTP_HOST', '').strip().lower() == 'smtp.gmail.com':
+        value = ''.join(value.split())
+    return value
+
 
 def reminders(send=False):
     # One worker only. Transaction prevents overlapping workers from sending concurrently.
@@ -26,8 +36,11 @@ def reminders(send=False):
                 msg['Subject']='Nhắc hạn trả sách Thư viện Khoa CNTT'
                 msg.set_content(f"Chào {r['name']}, sách {r['title']} có hạn trả {r['due_date']}. Vui lòng liên hệ thủ thư để trả sách.")
                 with smtplib.SMTP(os.environ['SMTP_HOST'],int(os.getenv('SMTP_PORT','587')),timeout=20) as smtp:
+                    smtp.ehlo()
                     smtp.starttls(context=ssl.create_default_context())
-                    if os.getenv('SMTP_USER'): smtp.login(os.environ['SMTP_USER'],os.environ['SMTP_PASSWORD'])
+                    smtp.ehlo()
+                    if os.getenv('SMTP_USER'):
+                        smtp.login(os.environ['SMTP_USER'], smtp_password(), initial_response_ok=False)
                     smtp.send_message(msg)
                 db.execute('INSERT INTO reminders VALUES (?,?,?)',(r['id'],today().isoformat(),now().isoformat()))
             count+=1

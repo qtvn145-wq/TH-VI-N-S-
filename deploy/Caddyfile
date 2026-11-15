@@ -1,0 +1,13 @@
+{
+    email {$ACME_EMAIL}
+}
+{$DOMAIN} {
+    encode gzip
+    header X-Content-Type-Options nosniff
+    header Referrer-Policy same-origin
+    reverse_proxy web:80
+    log {
+        output stdout
+        format json
+    }
+}
