@@ -2,15 +2,16 @@ export const base = (window.LIBRARY_API_BASE || '/api/v1').replace(/\/$/, '');
 let token = sessionStorage.getItem('library.session') || '';
 export const setToken = value => { token = value; value ? sessionStorage.setItem('library.session',value) : sessionStorage.removeItem('library.session'); };
 const messages = {
- INVALID_CREDENTIALS:'Email hoặc mật khẩu không đúng.',INVALID_SESSION:'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
- LIBRARIAN_REQUIRED:'Chức năng này chỉ dành cho thủ thư.',FORBIDDEN:'Bạn không có quyền thực hiện thao tác này.',NOT_FOUND:'Dữ liệu không còn tồn tại.',
- NO_COPY_AVAILABLE:'Sách hiện đã hết bản có thể mượn. Bạn có thể tham gia hàng đợi.',LOAN_LIMIT_REACHED:'Bạn đã đạt giới hạn 3 cuốn (gồm đang giữ chỗ và đang mượn).',
- QUEUE_PRIORITY:'Bản sách đang được ưu tiên cho bạn đọc đầu hàng đợi.',INVALID_LOAN_STATE:'Trạng thái phiếu đã thay đổi. Hãy tải lại danh sách.',
- DATA_CONFLICT:'Dữ liệu bị trùng hoặc đang được sử dụng. Kiểm tra email, tên, mã vạch và các dữ liệu liên quan.',COPY_IN_USE:'Bản sách đang được giữ hoặc mượn, không thể thanh lý.',
- ALREADY_PAID:'Khoản phạt này đã được thu.',COPY_AVAILABLE:'Sách còn bản có thể mượn. Hãy đặt mượn trực tiếp.',FILE_TOO_LARGE:'Ảnh phải nhỏ hơn hoặc bằng 5 MiB.',INVALID_IMAGE:'Chọn ảnh JPEG, PNG hoặc WebP hợp lệ.'
+ RESET_EMAIL_UNAVAILABLE:'Chức năng gửi email chưa được cấu hình. Vui lòng liên hệ quản trị viên để đặt lại mật khẩu.',RESET_LINK_INVALID:'Liên kết không hợp lệ, đã hết hạn hoặc đã được sử dụng. Hãy yêu cầu liên kết mới.',
+ EMAIL_EXISTS:'Email đã được sử dụng. Hãy chọn email khác.',LAST_ADMIN:'Phải giữ lại ít nhất một quản trị viên. Hãy tạo hoặc cấp quyền cho tài khoản khác trước.',CANNOT_DELETE_SELF:'Không thể xóa tài khoản đang đăng nhập.',ACCOUNT_HAS_HISTORY:'Tài khoản có dữ liệu lịch sử liên quan nên chưa thể xóa.',
+ INVALID_CREDENTIALS:'Email hoặc mật khẩu không đúng.',INVALID_SESSION:'Phiên đăng nhập đã hết hạn.',
+ LIBRARIAN_REQUIRED:'Chỉ quản trị viên được thực hiện thao tác này.',FORBIDDEN:'Bạn không có quyền truy cập.',NOT_FOUND:'Không tìm thấy sách hoặc sách đã được ẩn.',
+ DATA_CONFLICT:'Dữ liệu bị trùng hoặc danh mục đang được sử dụng.',FILE_TOO_LARGE:'Ảnh vượt quá 5 MiB.',INVALID_IMAGE:'Chọn ảnh JPEG, PNG hoặc WebP hợp lệ.',
+ PDF_TOO_LARGE:'PDF vượt quá 25 MiB.',INVALID_PDF:'PDF không hợp lệ, có mật khẩu hoặc vượt giới hạn 500 trang/kích thước trang.',PDF_TOO_COMPLEX:'PDF quá phức tạp, không thể xử lý trong thời gian cho phép.',
+ EBOOK_NOT_FOUND:'Sách chưa có PDF hoặc tệp không còn tồn tại.',EBOOK_CHANGED:'Nội dung sách vừa thay đổi. Hãy đóng và mở lại sách.',PAGE_NOT_FOUND:'Trang không tồn tại.'
 };
 export async function api(path, method='GET', body) {
- const controller = new AbortController(); const timer=setTimeout(()=>controller.abort(),20000);
+ const controller = new AbortController(); const timer=setTimeout(()=>controller.abort(),path.endsWith('/ebook')&&method==='POST'?60000:30000);
  try {
   const headers={}; if(token) headers.Authorization=`Bearer ${token}`;
   if(body && !(body instanceof FormData)) headers['Content-Type']='application/json';
