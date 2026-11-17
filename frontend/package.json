@@ -1,0 +1,9 @@
+{
+  "name": "thu-vien-so-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/app.js && node --check src/reader.js && node --check src/api.js && node --check config.js",
+    "test": "node tests/api_client_test.mjs"
+  }
+}

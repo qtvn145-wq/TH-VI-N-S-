@@ -1,52 +1,49 @@
-# Hợp đồng tích hợp Front end v1
+# API sách điện tử
 
-Base URL chạy local: `http://localhost:8081/api/v1`. Swagger: `/docs`; ReDoc: `/redoc`; JSON: `/openapi.json`. Bản chụp schema nằm trong `docs/openapi.json` và được sinh từ chính mã nguồn. Mọi request body dùng JSON, trừ upload dùng multipart/form-data trường `file`.
+Prefix `/api/v1`. Swagger tại `/docs`. Chi tiết schema và mã lỗi trong `openapi.json` (được sinh từ mã hiện tại).
 
-Đăng ký chỉ tạo reader. CLI tạo thủ thư. Login trả `{access_token,token_type:"bearer",expires_in:28800}`. Gửi `Authorization: Bearer <access_token>`. Token opaque có hạn 8 giờ, có thể thu hồi bằng logout; không phải JWT. Không có refresh token. Không lưu password hoặc token vào URL.
+| API | Quyền | Mục đích |
+| --- | --- | --- |
+| POST /auth/register | Công khai | Tạo tài khoản reader |
+| POST /auth/login | Công khai | Nhận Bearer session 8 giờ |
+| GET /auth/me; POST /auth/logout | Đã đăng nhập | Tài khoản/đăng xuất |
+| GET /books | Công khai | q, author, category_id, readable_only, sort=id/newest/title, limit/offset |
+| GET /books/{id} | Công khai | Thông tin + page_count + ebook_revision |
+| POST /books; PUT /books/{id}; DELETE /books/{id} | librarian | Thêm/sửa/ẩn sách |
+| GET /catalog/{kind} | Công khai | authors hoặc categories |
+| POST/PUT/DELETE /catalog/{kind}[/{id}] | librarian | Quản trị danh mục |
+| POST /books/{id}/cover | librarian | Multipart file JPEG/PNG/WebP <=5 MiB |
+| POST /books/{id}/ebook | librarian | Multipart file PDF <=25 MiB, <=500 trang |
+| GET /books/{id}/ebook | Công khai | book_id, page_count, revision |
+| GET /books/{id}/pages/{page}?v={revision} | Công khai | JPEG của trang, đánh số từ 1 |
+| GET /favorites | Đã đăng nhập | Danh sách yêu thích riêng, phân trang |
+| GET/PUT/DELETE /favorites/{id} | Đã đăng nhập | Trạng thái/lưu/bỏ yêu thích |
+| GET /books/{id}/progress | Đã đăng nhập | Trang gần nhất, mặc định 1 |
+| PUT /books/{id}/progress | Đã đăng nhập | JSON {page, revision}; phải đúng phiên bản PDF |
+| GET /health | Công khai | Kiểm tra schema 3 |
 
-| Nhóm | Method và đường dẫn (sau /api/v1) | Quyền / mục đích |
+Không có API loans, fines, copies, waitlist hoặc reminders. Tệp PDF được xử lý trong tiến trình con với thời gian tối đa 20 giây mỗi bước; Linux áp dụng thêm giới hạn CPU/bộ nhớ. Giới hạn trang và kích thước được kiểm tra trước khi công bố. JavaScript trong PDF không được chạy trên trình duyệt; người đọc nhận ảnh trang.
+
+Thay PDF tạo revision mới và đặt lại tiến độ đọc. Trang/tiến độ yêu cầu revision cũ trả 409. Trang ngoài phạm vi trả 404 (ảnh) hoặc 422 (tiến độ). PDF sai/hỏng/có mật khẩu/vượt giới hạn trang trả 415 hoặc 422, quá lớn trả 413. PDF và ảnh cache cũ được giữ; sao lưu chứa cả chúng. Chưa có công cụ tự dọn phiên bản cũ.
+
+Quyền đọc là công khai cho sách chưa bị ẩn. Không có DRM/chống chụp màn hình; không dùng cơ chế này như một giải pháp kiểm soát bản quyền.
+
+## Quản lý tài khoản (chỉ librarian)
+
+| Phương thức | Đường dẫn | Chức năng |
 |---|---|---|
-| Auth | POST /auth/register; POST /auth/login | Công khai; đăng ký, đăng nhập |
-| Auth | GET /auth/me; POST /auth/logout | Đã đăng nhập |
-| Danh mục | GET /books?q=&author=&category_id=&limit=20&offset=0 | Công khai; tên sách/tác giả không phân biệt hoa thường, có dấu |
-| Danh mục | GET /books/{id} | Chi tiết, author_ids, category_ids, available_copies |
-| Danh mục | GET /catalog/{kind} | kind là authors hoặc categories; ánh xạ ID sang tên |
-| Quản lý | POST /books; PUT /books/{id}; DELETE /books/{id} | Thủ thư; PUT thay toàn bộ trường chỉnh sửa |
-| Quản lý | POST /catalog/{kind}; PUT hoặc DELETE /catalog/{kind}/{id} | Thủ thư |
-| Bản sách | GET hoặc POST /books/{id}/copies; PUT /copies/{id} | Thủ thư; mã vạch, thanh lý |
-| Ảnh bìa | POST /books/{id}/cover | Thủ thư; PNG/JPEG/WebP tối đa 5 MiB, kiểm tra giải mã, chuyển JPEG |
-| Mượn | POST /loans | Đã đăng nhập; body {"book_id":1}; trả 201 và loan |
-| Lịch sử | GET /loans?status=&limit=20&offset=0 | Bạn đọc xem của mình; thủ thư xem toàn bộ |
-| Mượn | POST /loans/{id}/cancel | Chủ phiếu hoặc thủ thư, chỉ reserved |
-| Mượn | POST /loans/{id}/handover; POST /loans/{id}/return | Chỉ thủ thư, kiểm tra trạng thái |
-| Phạt | GET /fines | Bạn đọc xem của mình; thủ thư xem toàn bộ |
-| Phạt | POST /fines/{id}/pay | Thủ thư ghi nhận đã thu tiền; không tích hợp cổng thanh toán |
-| Hàng đợi | POST /waitlist; GET /waitlist; DELETE /waitlist/{id} | Body book_id; bạn đọc quản lý của mình; thủ thư được xem/xóa toàn bộ |
-| Thống kê | GET /stats | Thủ thư; số đầu sách, đang mượn, quá hạn, tổng phạt chưa thu |
-| Vận hành | GET /health | Kiểm tra truy cập DB |
+| GET | `/api/v1/admin/users?q=&limit=13&offset=0` | Danh sách, tìm theo tên/email, phân trang |
+| POST | `/api/v1/admin/users` | Tạo: email, name, password, role |
+| PUT | `/api/v1/admin/users/{id}` | Sửa: email, name, role |
+| PUT | `/api/v1/admin/users/{id}/password` | Đặt lại mật khẩu: password |
+| DELETE | `/api/v1/admin/users/{id}` | Xóa tài khoản và dữ liệu cá nhân liên quan |
 
-GET books/loans trả array; limit tối đa 100, offset >= 0, chưa có total. GET fines/catalog/waitlist chưa phân trang; bản MVP cần thêm phân trang khi dữ liệu lớn. LoanOut có overdue_days và estimated_fine; phiếu đã trả giữ nguyên mức phạt, còn trạng thái thu tiền xem fines. Ảnh lấy từ origin API + cover_url. Mã vạch là chuỗi, không tự tạo ảnh mã vạch.
+Danh sách/kết quả tài khoản chỉ chứa id, email, name, role. Không trả password_hash. Vai trò hợp lệ: reader, librarian. Đăng ký công khai vẫn chỉ tạo reader. Xung đột trả 409: EMAIL_EXISTS, LAST_ADMIN, CANNOT_DELETE_SELF, ACCOUNT_HAS_HISTORY. Đổi email/vai trò/mật khẩu thu hồi phiên. Các thao tác ghi được thực hiện trong transaction; lỗi xóa do lịch sử cũ sẽ rollback toàn bộ.
 
-Ví dụ tạo đầu sách:
-```json
-{"title":"Cơ sở dữ liệu","description":"Giáo trình","author_ids":[1],"category_ids":[1]}
-```
-Ví dụ tạo bản: `{"barcode":"CNTT-000001"}`. PUT bản: `{"barcode":"CNTT-000001","retired":false}`.
+## Khôi phục mật khẩu
 
-Luồng giao diện: tìm sách → chọn book_id → POST loans → hiển thị reserved → thủ thư handover → borrowed/due_date → thủ thư return → returned + fines. Bạn đọc không được tự giao/trả sách. Lượt chờ chỉ được thêm khi hết bản; sau khi có bản, người đầu hàng đợi gọi POST loans.
+- `POST /api/v1/auth/forgot-password` — `{email}`; trả 202 `{ok:true}` cho cả email tồn tại/không tồn tại và yêu cầu bị giới hạn. Chưa cấu hình SMTP: 503 `RESET_EMAIL_UNAVAILABLE`.
+- `POST /api/v1/auth/reset-password` — `{token,password}`; thành công 200 `{ok:true}`, liên kết không hợp lệ/hết hạn/đã dùng: 400 `RESET_LINK_INVALID`. Mật khẩu 10–128 ký tự.
+- Liên kết gửi qua email: `PUBLIC_ORIGIN/#reset-password?token=...`; token được bỏ khỏi thanh địa chỉ sau khi giao diện đọc được, không đưa vào query gửi tới web server. Không cần đăng nhập để sử dụng hai API.
 
-| HTTP / detail | Hiển thị gợi ý |
-|---|---|
-| 401 / INVALID_CREDENTIALS hoặc INVALID_SESSION | Thông tin sai hoặc phiên hết hạn, đăng nhập lại |
-| 403 / LIBRARIAN_REQUIRED hoặc FORBIDDEN | Không đủ quyền |
-| 404 / NOT_FOUND | Đối tượng không tồn tại |
-| 409 / NO_COPY_AVAILABLE | Hết sách, có thể tham gia hàng đợi |
-| 409 / LOAN_LIMIT_REACHED | Đã giữ/mượn tối đa 3 cuốn |
-| 409 / QUEUE_PRIORITY | Bản sách ưu tiên người đầu hàng đợi |
-| 409 / INVALID_LOAN_STATE | Trạng thái đã thay đổi, tải lại phiếu |
-| 409 / DATA_CONFLICT | Trùng email/mã vạch/tên/lượt chờ hoặc dữ liệu còn tham chiếu |
-| 409 / COPY_IN_USE; ALREADY_PAID; COPY_AVAILABLE | Không thể thanh lý; đã thu phạt; vẫn còn bản để đặt |
-| 413 / FILE_TOO_LARGE; 415 / INVALID_IMAGE | Ảnh vượt giới hạn hoặc định dạng/nội dung không hợp lệ |
-| 422 | Lỗi kiểm chứng trường; detail là array chuẩn FastAPI |
-
-Các lỗi nghiệp vụ trả `{"detail":"CODE"}`. Khi thiếu Bearer header, framework trả lỗi xác thực chuẩn. Sau request timeout không tự retry POST tạo loan: tải lại lịch sử trước vì chưa có Idempotency-Key. Giao/trả lặp trả 409, không tăng tiền phạt hoặc tạo thêm phiếu.
+Xem [cấu hình gửi email](QUEN_MAT_KHAU.md).

@@ -25,15 +25,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: pip install -r requirements.lock
-      - run: python -m unittest discover -s tests -v
-      - run: PYTHONPATH=. python qa/integration_test.py
-      - run: node qa/api_client_test.mjs
-      - run: bash scripts/setup.sh
+      - run: pip install -r backend/requirements.lock
+      - run: bash devops/scripts/check.sh
+      - run: bash devops/scripts/setup.sh
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait
-      - run: bash scripts/smoke.sh
-      - run: bash scripts/ops.sh backup
+      - run: bash devops/scripts/smoke.sh
+      - run: bash devops/scripts/ops.sh backup
       - name: Package tested images and source
         run: |
           docker save thu-vien-api:local thu-vien-web:local | gzip > /tmp/images.tar.gz

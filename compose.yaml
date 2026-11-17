@@ -1,13 +1,21 @@
 name: thu-vien-so
 x-app: &app
   image: thu-vien-api:${IMAGE_TAG:-local}
-  build: .
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
   environment: &env
     DATABASE_PATH: /data/library.db
     MEDIA_DIR: /data/covers
-    LOAN_DAYS: ${LOAN_DAYS:-14}
-    DAILY_FINE: ${DAILY_FINE:-2000}
+    EBOOK_DIR: /data/ebooks
     CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8081}
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8081}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
     AUTO_MIGRATE: "false"
   volumes:
     - library_data:/data
@@ -20,7 +28,7 @@ x-app: &app
 services:
   migrate:
     <<: *app
-    command: [python, -m, app.cli, init]
+    command: [python, -m, backend.app.cli, init]
     restart: "no"
   backend:
     <<: *app
@@ -50,18 +58,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  reminders:
-    <<: *app
-    profiles: [ops]
-    environment:
-      <<: *env
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
-    secrets: [smtp_password]
-    command: [python, -m, app.cli, reminders]
   maintenance:
     <<: *app
     profiles: [ops]
@@ -69,9 +65,6 @@ services:
     volumes:
       - library_data:/data
       - ${BACKUP_DIR:-./backups}:/backups
-    command: [python, scripts/backup.py, backup]
-secrets:
-  smtp_password:
-    file: ./secrets/smtp_password.txt
+    command: [python, devops/scripts/backup.py, backup]
 volumes:
   library_data:

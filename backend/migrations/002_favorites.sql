@@ -1,0 +1,9 @@
+BEGIN IMMEDIATE;
+CREATE TABLE IF NOT EXISTS favorites (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, book_id)
+);
+PRAGMA user_version=2;
+COMMIT;

@@ -1,331 +1,387 @@
-# Thư viện số Khoa CNTT
+# THƯ VIỆN SỐ — Sách điện tử
 
-Ứng dụng quản lý thư viện với hai vai trò **bạn đọc** (sinh viên, giảng viên) và **thủ thư**. Nhánh `main` chứa đầy đủ giao diện, API, migration, kiểm thử và cấu hình DevOps.
+Ứng dụng tra cứu, quản lý và đọc sách PDF trên trình duyệt. Bộ mã nguồn gồm ba phần **backend**, **frontend** và **devops**, được giải nén vào cùng một thư mục dự án.
 
-## Chức năng
+Phiên bản này tập trung vào sách điện tử: không sử dụng quy trình mượn sách, trả sách, hạn trả hoặc tiền phạt. Cơ sở dữ liệu nâng cấp từ phiên bản cũ có thể vẫn giữ bảng lịch sử của chức năng mượn trả.
 
-| Vai trò | Chức năng |
-|---|---|
-| Bạn đọc | Đăng ký/đăng nhập; tra cứu tên sách, tác giả, chủ đề; xem số bản còn; đặt/hủy mượn; xem lịch sử, hạn trả và tiền phạt; tham gia hàng đợi |
-| Thủ thư | Quản lý đầu sách, tác giả, chủ đề, bản sách có mã vạch và ảnh bìa; xác nhận giao/nhận trả; ghi nhận thu tiền phạt; xem thống kê |
-| Vận hành | Docker Compose, migration trước API, volume dữ liệu, health check, log xoay vòng, backup/restore, lịch nhắc hạn SMTP, HTTPS, CI và triển khai thủ công |
+## 1. Công nghệ và ngôn ngữ
 
-**Quy tắc:** tối đa 3 cuốn gồm cả đang đặt và đang mượn. Hạn trả bắt đầu khi giao sách; mặc định 14 ngày, phạt 2.000 VND/ngày quá hạn. Quy tắc và quyền truy cập được kiểm tra ở backend.
+| Thành phần | Ngôn ngữ / công nghệ | Vai trò |
+| --- | --- | --- |
+| Backend | Python, FastAPI, Uvicorn | API, xác thực, phân quyền, xử lý dữ liệu |
+| Kiểm tra dữ liệu | Pydantic | Kiểm tra nội dung gửi lên API |
+| Cơ sở dữ liệu | SQLite, SQL, thư viện `sqlite3` | Lưu sách, người dùng, phiên đăng nhập và tiến độ đọc |
+| Xử lý PDF | pypdfium2 | Kết xuất trang PDF thành ảnh để đọc trên web |
+| Xử lý ảnh | Pillow | Kiểm tra và xử lý ảnh bìa |
+| Frontend | HTML5, CSS3, JavaScript ES Modules | Giao diện, gọi API bằng Fetch, hiệu ứng chuyển trang |
+| Web server | Nginx | Phục vụ giao diện và chuyển tiếp yêu cầu tới backend |
+| Đóng gói | Docker, Docker Compose | Chạy các dịch vụ trong container |
+| Vận hành | Bash, Python, GitHub Actions | Kiểm tra, sao lưu và hỗ trợ triển khai |
+| Truy cập Internet | Cloudflare Tunnel (`cloudflared`) | Chuyển tiếp HTTPS công khai đến web đang chạy trên máy |
+| HTTPS tùy chọn | Caddy và các tệp Compose bổ sung | Triển khai có tên miền; không bắt buộc khi dùng Quick Tunnel |
 
-## Công nghệ và kiến trúc
+Frontend không dùng React/Vue và không cần bước build bằng npm để chạy. Node.js/npm phục vụ kiểm tra mã và chạy kiểm thử. Backend không dùng SQLAlchemy hoặc JWT; xác thực sử dụng token phiên đăng nhập.
 
-| Thành phần | Công nghệ / địa chỉ |
-|---|---|
-| Front end | HTML, CSS, JavaScript ES modules; không cần npm build |
-| Back end | Python 3.12, FastAPI, Uvicorn; `/api/v1` |
-| CSDL | SQLite WAL, giao dịch ghi; lưu `/data/library.db` trong Compose |
-| Ảnh bìa | Volume `/data/covers`; phục vụ qua `/media/` |
-| Xác thực | Mật khẩu scrypt; Bearer session 8 giờ, chỉ lưu hash token trong DB |
-| Web server | Nginx phục vụ UI và chuyển tiếp API; Caddy cho HTTPS |
-| Email | SMTP STARTTLS, mặc định cổng 587 |
-| CI/CD | GitHub Actions; deploy SSH phải chạy thủ công trên `main` |
+Các phiên bản thư viện Python nằm trong `backend/requirements.txt`; dùng `backend/requirements.lock` khi cài đặt để đồng nhất môi trường.
 
-Trình duyệt truy cập Nginx; các đường dẫn API và ảnh được chuyển tới FastAPI. SQLite là database nhúng nên không cần container CSDL riêng. Bản này phù hợp một máy chủ, một API worker; không chia volume SQLite qua NFS hoặc scale nhiều máy.
+## 2. Cấu trúc ba phần
 
-## 1. Chạy nhanh bằng Docker trên Ubuntu/WSL
+```text
+thuvienso/
+├── README.md
+├── backend/                 # API, cơ sở dữ liệu, migration, kiểm thử, Dockerfile
+├── frontend/                # HTML, CSS, JavaScript, kiểm thử, Dockerfile
+├── devops/                  # Cấu hình triển khai, Nginx, script vận hành
+├── docs/                    # Tài liệu bổ sung
+├── qa/                      # Kiểm thử tích hợp
+├── compose.yaml             # Cấu hình Docker chính
+├── compose.tunnel.yaml      # Cloudflare Quick Tunnel
+├── compose.prod.yaml        # Cấu hình triển khai bổ sung
+├── compose.https-local.yaml
+├── .env.example             # Mẫu biến môi trường
+├── serve.py                 # Chạy API và giao diện bằng Python
+└── demo.py
+```
 
-Cài Docker Engine + Compose v2 hoặc Docker Desktop tích hợp với Ubuntu WSL. Kiểm tra `docker info` và `docker compose version` trước khi chạy.
+Giữ nguyên tên thư mục `backend`, `frontend`, `devops`; không đổi thành `back-end` hoặc `front-end`, vì đường dẫn import và cấu hình Docker đang dùng tên hiện tại.
+
+**Giải nén lần đầu:** chạy tại thư mục chứa ba ZIP, thay tên tệp nếu bản tải về có hậu tố `(1)`.
 
 ```bash
-git clone https://github.com/qtvn145-wq/TH-VI-N-S-.git
-cd TH-VI-N-S-
-bash scripts/setup.sh
-docker compose config --quiet
+mkdir -p ~/thuvienso
+unzip Backend_Ebook.zip -d ~/thuvienso
+unzip Frontend_Ebook.zip -d ~/thuvienso
+unzip DevOps_Ebook.zip -d ~/thuvienso
+cd ~/thuvienso
+```
+
+Ba ZIP phải cùng ghép vào một thư mục, không đặt mỗi ZIP trong một thư mục dự án độc lập. Đặt README này tại `~/thuvienso/README.md`. Các lệnh bên dưới mặc định chạy từ thư mục gốc này.
+
+## 3. Chức năng và phân quyền
+
+- Tra cứu sách theo tên, tác giả, chủ đề; lọc và sắp xếp danh sách.
+- Đọc PDF với hiệu ứng chuyển trang, chế độ một trang/hai trang, nút tiến/lùi ở hai bên, phím mũi tên và thao tác chạm.
+- Thu phóng theo các mốc 25%, 50%, 75%, 100%, 125%, 150%, 175%, 200%; mặc định 100% tương ứng khung trang được căn vừa vùng đọc.
+- Chế độ toàn màn hình, lưu tiến độ đọc và danh sách yêu thích.
+- Đăng ký, đăng nhập và quên mật khẩu qua email khi đã cấu hình SMTP.
+- Quản lý sách, tác giả, chủ đề, ảnh bìa và tệp PDF.
+- Quản lý tài khoản: tìm kiếm, thêm, sửa thông tin, đổi vai trò, đặt mật khẩu mới và xóa tài khoản theo điều kiện của hệ thống.
+
+| Vai trò trong dữ liệu | Quyền |
+| --- | --- |
+| `reader` | Tài khoản bạn đọc: đọc sách, quản lý yêu thích và tiến độ cá nhân |
+| `librarian` | Quản trị/thủ thư: quyền bạn đọc, quản lý nội dung và tài khoản |
+
+**Chưa có vai trò `admin` tách biệt.** Mục quản trị trên giao diện hiện thuộc tài khoản `librarian`. Hệ thống bảo vệ tài khoản thủ thư cuối cùng và không cho tự xóa tài khoản đang dùng; liên kết dữ liệu lịch sử có thể ngăn xóa một số tài khoản.
+
+Trình đọc hiện kết xuất trang PDF thành ảnh, không phải trình đọc EPUB hoặc công cụ tìm kiếm/sao chép văn bản trong PDF.
+
+## 4. Cách chương trình hoạt động
+
+Khi chạy Docker, trình duyệt mở cổng 8081 của máy. Nginx trả về giao diện và chuyển các yêu cầu `/api/` sang FastAPI ở cổng 8000 trong mạng Docker. Backend kiểm tra dữ liệu, xác thực quyền rồi đọc/ghi SQLite hoặc xử lý tệp sách.
+
+Khi mở sách, backend kết xuất trang PDF thành ảnh và lưu bộ nhớ đệm trên đĩa. Frontend tải ảnh trang, bố trí vùng đọc và thực hiện hiệu ứng chuyển trang. Tiến độ của người dùng đăng nhập được lưu vào cơ sở dữ liệu; khách đọc sử dụng lưu trữ cục bộ của trình duyệt.
+
+Cloudflare Tunnel bổ sung một đường truy cập HTTPS từ Internet đến dịch vụ `web:80`. Máy WSL vẫn xử lý ứng dụng và lưu dữ liệu; Tunnel không chuyển ứng dụng thành một máy chủ chạy độc lập trên Cloudflare.
+
+## 5. Cơ sở dữ liệu và nơi lưu dữ liệu
+
+Các bảng chính gồm `users`, `sessions`, `books`, `authors`, `categories`, `book_authors`, `book_categories`, `favorites`, `ebooks`, `reading_progress`, `password_resets`, `reset_limits`.
+
+Tài khoản nằm trong bảng `users`. Mật khẩu được băm bằng scrypt, không lưu mật khẩu gốc. Token phiên và token đặt lại mật khẩu được lưu dưới dạng băm. Liên kết đặt lại mật khẩu có hiệu lực 15 phút, dùng một lần.
+
+| Dữ liệu | Chạy Python trực tiếp, mặc định | Chạy Docker, đường dẫn trong container |
+| --- | --- | --- |
+| SQLite | `data/library.db` | `/data/library.db` |
+| Ảnh bìa | `data/covers/` | `/data/covers/` |
+| PDF và bộ nhớ đệm trang | `data/ebooks/` | `/data/ebooks/` |
+
+Docker lưu thư mục `/data` trong volume `library_data`; với tên project mặc định, tên volume thực tế là `thu-vien-so_library_data`.
+
+**Python trực tiếp và Docker mặc định dùng hai nơi lưu dữ liệu khác nhau.** Tạo tài khoản ở Python không tự tạo tài khoản trong Docker và ngược lại. Nên chọn Docker làm cách chạy chính nếu muốn sử dụng Tunnel theo hướng dẫn bên dưới.
+
+Xem thông tin volume:
+
+```bash
+docker volume inspect thu-vien-so_library_data
+```
+
+Không sửa trực tiếp SQLite khi dịch vụ đang ghi dữ liệu. Dùng giao diện quản trị để quản lý tài khoản và sách.
+
+## 6. Môi trường chạy
+
+- Windows 10/11 với Ubuntu qua WSL2, hoặc máy Linux.
+- Docker Engine và Docker Compose v2; trên Windows có thể dùng Docker Desktop bật WSL Integration cho Ubuntu.
+- Nếu chạy Python trực tiếp: khuyến nghị Python 3.12 và môi trường ảo `venv`.
+- Node.js/npm chỉ cần khi chạy kiểm thử frontend.
+- Trình duyệt hiện đại; kết nối Internet để tải image, thư viện và sử dụng Tunnel.
+
+Kiểm tra môi trường Docker:
+
+```bash
+docker --version
+docker compose version
+docker info
+```
+
+Nếu dùng Docker Desktop, cần mở Docker Desktop trước khi chạy lệnh trong WSL.
+
+## 7. Chạy bằng Docker — cách khuyến nghị
+
+### 7.1. Tạo cấu hình
+
+```bash
+cd ~/thuvienso
+test -f .env || cp .env.example .env
+bash devops/scripts/setup.sh
+nano .env
+```
+
+Cấu hình cơ bản khi chạy nội bộ:
+
+```dotenv
+HTTP_PORT=8081
+PUBLIC_ORIGIN=http://localhost:8081
+IMAGE_TAG=local
+BACKUP_DIR=./backups
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
+```
+
+Giữ lại `.env` đang sử dụng nếu đã cấu hình. Các giá trị SMTP trống nghĩa là chưa gửi được email quên mật khẩu. Không đưa `.env`, mật khẩu SMTP hoặc dữ liệu tài khoản lên Git.
+
+### 7.2. Khởi động
+
+```bash
 docker compose up -d --build --wait
-bash scripts/smoke.sh http://localhost:8081
 ```
 
-Nếu đã có thư mục dự án, vào thư mục đó; không cần clone lặp lại. Setup giữ nguyên `.env` và secret đã có. Front end không cần Node khi chạy bằng Docker.
+Dịch vụ `migrate` khởi tạo/nâng cấp cấu trúc SQLite rồi thoát. Sau khi migration thành công, `backend` và `web` chạy. `migrate` kết thúc với mã 0 là bình thường.
 
-| Địa chỉ | Mục đích |
-|---|---|
-| http://localhost:8081 | Giao diện bạn đọc/thủ thư |
-| http://localhost:8081/docs | Swagger tương tác |
-| http://localhost:8081/openapi.json | OpenAPI từ ứng dụng |
-| http://localhost:8081/api/v1/health | Kiểm tra API và schema database |
+Mở:
 
-### Tạo tài khoản thủ thư
+- Website: http://localhost:8081
+- Tài liệu API: http://localhost:8081/docs
+- Kiểm tra hoạt động: http://localhost:8081/api/v1/health
+
+### 7.3. Tạo tài khoản quản trị/thủ thư đầu tiên
 
 ```bash
-docker compose run --rm --no-deps backend python -m app.cli librarian
+docker compose run --rm --no-deps backend python -m backend.app.cli librarian
 ```
 
-Nhập email, tên và mật khẩu ít nhất 10 ký tự. Mật khẩu không hiện khi nhập. Không có tài khoản mặc định trong bản triển khai. Bạn đọc tự đăng ký trên giao diện.
+Nhập email, tên và mật khẩu ít nhất 10 ký tự. Terminal không hiện ký tự khi nhập mật khẩu.
 
-Nếu terminal báo lỗi Unicode khi nhập tên, kiểm tra bộ gõ/UTF-8 hoặc nhập tên không dấu. Email đã tồn tại sẽ không được tạo lần hai.
+Lệnh này **tạo mới**, không cập nhật tài khoản. Nếu email đã tồn tại sẽ gặp `UNIQUE constraint failed: users.email`. Sau khi đăng nhập bằng thủ thư, dùng mục quản lý tài khoản để thêm, sửa, đổi mật khẩu hoặc xóa người dùng.
 
-### Các lệnh thường dùng
+### 7.4. Kiểm tra, dừng và chạy lại
 
 ```bash
-docker compose ps -a
+curl -fsS http://localhost:8081/api/v1/health
+bash devops/scripts/smoke.sh http://localhost:8081
+docker compose ps
 docker compose logs --tail=100 backend web
-docker compose stop
-docker compose up -d --wait
+docker compose logs --tail=100 migrate
 ```
 
-`migrate` thoát với mã 0 là bình thường; `backend` và `web` cần healthy. Database/ảnh nằm trong named volume, được giữ khi thay container. **Không dùng `docker compose down -v` khi cần giữ dữ liệu.**
-
-## 2. Chạy trực tiếp bằng Python
+Health trả về `{"status":"ok"}` cho biết API đang phản hồi; vẫn cần kiểm tra đăng nhập, mở sách và email để xác nhận các chức năng tương ứng.
 
 ```bash
-python3 -m venv .venv
+# Dừng dịch vụ
+docker compose stop
+
+# Chạy lại
+docker compose up -d --wait
+
+# Sau khi thay đổi mã nguồn
+docker compose up -d --build --wait
+```
+
+`docker compose down` giữ volume theo mặc định. **Không thêm `-v` nếu muốn giữ dữ liệu**, vì tùy chọn đó xóa volume của dự án.
+
+## 8. Chạy Python trực tiếp — lựa chọn thay thế
+
+Nếu Docker đang chiếm cổng 8081, dừng trước:
+
+```bash
+docker compose stop
+```
+
+Với Python 3.12 đã cài:
+
+```bash
+cd ~/thuvienso
+python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.lock
-cp -n .env.example .env
-set -a
-source .env
-set +a
-python -m app.cli init
-python -m app.cli librarian
+python -m pip install -r backend/requirements.lock
+python -m backend.app.cli init
+python -m backend.app.cli librarian
 uvicorn serve:app --host 127.0.0.1 --port 8081
 ```
 
-Đây là cách chạy thay thế Docker; không chạy đồng thời hai bản chiếm cổng 8081. `serve:app` phục vụ cả UI và API; `app.main:app` chỉ phục vụ API. Python không tự đọc `.env`. Nếu `.env` đang chứa cấu hình Compose, dùng môi trường riêng khi chạy Python để tránh nhầm đường dẫn database.
+Chỉ tạo thủ thư khi chưa có tài khoản phù hợp trong cơ sở dữ liệu này. Mở http://localhost:8081 và giữ terminal Uvicorn hoạt động. Nhấn `Ctrl+C` để dừng.
 
-Muốn demo có dữ liệu mẫu riêng: `python demo.py`. Tài khoản demo: `reader@demo.local` (bạn đọc), `librarian@demo.local` (thủ thư); mật khẩu chung `ThuVienDemo2026!`. Không dùng tài khoản demo khi công khai. Demo dùng `data/demo.sqlite3`, không tự thêm dữ liệu vào database Compose.
+`serve.py` phục vụ cả frontend và API. Chạy riêng `backend.app.main:app` không thay thế đầy đủ vai trò phục vụ giao diện của `serve.py`.
 
-## 3. Cấu hình và secrets
+Python trực tiếp **không tự đọc `.env`**. Nếu dùng SMTP hoặc địa chỉ công khai, cần truyền các biến môi trường tương ứng cho tiến trình trước khi chạy Uvicorn. Các lệnh Tunnel Docker ở mục tiếp theo áp dụng cho cách chạy Docker tại mục 7.
 
-- Chạy Python: mẫu `.env.example`.
-- Chạy Docker: `scripts/setup.sh` tạo `.env` từ `deploy/env.example`.
-- Không commit `.env`, `secrets/`, `data/` hoặc `backups/`.
+## 9. Công khai bằng Cloudflare Quick Tunnel miễn phí
 
-| Biến | Giá trị / ý nghĩa |
-|---|---|
-| HTTP_PORT | `8081`, chỉ bind loopback trong cấu hình mặc định |
-| PUBLIC_ORIGIN | `http://localhost:8081`, đổi nếu frontend cần origin khác |
-| DATABASE_PATH | Compose: `/data/library.db`; Python: `data/library.db` |
-| MEDIA_DIR | Compose: `/data/covers`; Python: `data/covers` |
-| LOAN_DAYS / DAILY_FINE | `14` / `2000` |
-| AUTO_MIGRATE | Compose đặt `false`; service migrate chạy riêng trước backend |
-| SMTP_HOST / SMTP_PORT | Máy chủ email / `587` |
-| SMTP_FROM / SMTP_USER | Địa chỉ người gửi / tài khoản SMTP |
-| SMTP_PASSWORD_FILE | Secret file, Compose mount vào `/run/secrets/smtp_password` |
-| BACKUP_DIR | `./backups`; giữ mặc định cho monitor và offsite script |
-| DOMAIN / ACME_EMAIL | Dùng khi triển khai HTTPS với tên miền thật |
-| IMAGE_TAG | `local`; pipeline đi kèm dùng tag này |
+Quick Tunnel tạo địa chỉ tạm dạng `https://TEN-NGAU-NHIEN.trycloudflare.com`, không cần đăng ký tên miền. Đây là hình thức thử nghiệm, không bảo đảm thời gian hoạt động. Khi tạo lại Tunnel, địa chỉ có thể thay đổi.
 
-### Gmail cá nhân
+### 9.1. Cách A: Chạy Tunnel trong terminal
 
-Bật xác minh 2 bước và tạo [mật khẩu ứng dụng](https://myaccount.google.com/apppasswords) cho đúng tài khoản. Mật khẩu ứng dụng có 16 ký tự, không phải mật khẩu đăng nhập Google hay thư viện.
+Khởi động ứng dụng ở mục 7, sau đó mở terminal WSL khác:
 
-Sửa các dòng hiện có trong `.env` (thay địa chỉ minh họa bằng Gmail của bạn):
+```bash
+cd ~/thuvienso
+docker run --rm -it \
+  --network thu-vien-so_default \
+  cloudflare/cloudflared:latest \
+  tunnel --no-autoupdate --url http://web:80
+```
+
+Đợi log hiển thị URL `https://…trycloudflare.com` và dòng `Registered tunnel connection`, rồi mở URL đó. Kiểm tra thêm từ điện thoại dùng mạng di động để xác nhận truy cập bên ngoài.
+
+- `web:80` là dịch vụ Nginx trong mạng Docker; không đổi thành `localhost:8081` bên trong container Tunnel.
+- `thu-vien-so_default` là mạng của project mặc định; nếu tự đổi tên project thì phải dùng tên mạng tương ứng.
+- Giữ terminal này mở. `Ctrl+C` dừng Tunnel và container sẽ bị xóa do sử dụng `--rm`.
+
+### 9.2. Cập nhật địa chỉ công khai của ứng dụng
+
+Mở terminal khác, sửa `.env`:
+
+```bash
+cd ~/thuvienso
+nano .env
+```
+
+Thay bằng URL **vừa nhận được**, không giữ nguyên tên ví dụ:
 
 ```dotenv
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_FROM=your-account@gmail.com
-SMTP_USER=your-account@gmail.com
+PUBLIC_ORIGIN=https://TEN-TUNNEL.trycloudflare.com
 ```
 
-Lưu mật khẩu bằng `nano secrets/smtp_password.txt`. Không ghi mật khẩu trong README/lệnh Git. Secret directory quyền 700; file quyền 644 để UID container đọc được qua bind mount. Đây là secret dạng tệp, không phải kho secrets mã hóa. Backend bỏ khoảng trắng phân nhóm của Gmail; các nhà cung cấp khác giữ nguyên khoảng trắng trong mật khẩu.
+Áp dụng cấu hình:
 
 ```bash
-# Chỉ đếm phiếu đủ điều kiện; chưa xác minh kết nối SMTP:
-docker compose run --rm --no-deps reminders
-
-# Gửi một thư thật về chính SMTP_USER:
-docker compose run --rm --no-deps reminders python scripts/smtp-test.py
+docker compose up -d --wait
 ```
 
-Chỉ bật lịch gửi sau khi đã nhận thư thử. Tác vụ gửi nhắc hạn thật:
+`PUBLIC_ORIGIN` được dùng để tạo liên kết email quên mật khẩu và cấu hình origin. Chỉ `docker compose restart` không áp dụng giá trị môi trường mới. Khi địa chỉ Tunnel đổi, phải cập nhật lại biến này.
+
+### 9.3. Cách B: Chạy Tunnel nền bằng Compose
+
+Dùng cách này **thay cho cách A**. Nếu cách A đang chạy, nhấn `Ctrl+C` trong terminal của Tunnel trước.
 
 ```bash
-bash scripts/ops.sh reminders
+cd ~/thuvienso
+docker compose -f compose.yaml -f compose.tunnel.yaml up -d --build --wait
+docker compose -f compose.yaml -f compose.tunnel.yaml logs --tail=100 -f tunnel
 ```
 
-Tác vụ chọn phiếu đang mượn có hạn trả ngày mai hoặc sớm hơn, đánh dấu tối đa một lần/phiếu/ngày khi gửi thành công. Nếu SMTP nhận thư rồi tiến trình chết trước khi commit, thử lại có thể gửi trùng. Không dùng nhiều worker gửi email. Cổng 465 implicit TLS chưa được triển khai.
+Lấy URL từ log. `Ctrl+C` lúc đang xem log chỉ thoát chế độ xem, Tunnel nền vẫn chạy.
 
-## 4. Sao lưu, phục hồi và lịch tự động
-
-### Backup
+Sửa `PUBLIC_ORIGIN` trong `.env` rồi áp dụng với đủ hai tệp:
 
 ```bash
-bash scripts/ops.sh backup
-sudo ls -lht backups/
+docker compose -f compose.yaml -f compose.tunnel.yaml up -d --wait
 ```
 
-Backup dừng API trong thời gian ngắn, snapshot SQLite, chép ảnh bìa, kiểm tra integrity/foreign keys và checksum, sau đó chạy lại API. Giữ 14 ngày; chỉ xóa archive cũ sau khi tạo bản mới thành công. Lưu thêm ở máy khác nếu cần bảo vệ khi hỏng ổ cứng.
-
-### Cài lịch trên Linux hoặc WSL có systemd
+Các lệnh quản lý:
 
 ```bash
-sudo bash scripts/install-timers.sh
-sudo systemctl enable --now library-backup.timer library-monitor.timer
-# Chỉ sau khi SMTP đã kiểm tra thành công:
-sudo systemctl enable --now library-reminders.timer
-systemctl list-timers 'library-*'
-```
+# Xem trạng thái
+docker compose -f compose.yaml -f compose.tunnel.yaml ps
 
-Installer tự dùng đường dẫn checkout hiện tại. Nếu Docker chạy qua Docker Desktop và WSL không có `docker.service`, installer bỏ phụ thuộc đó. Máy/WSL và Docker phải đang hoạt động; không đảm bảo lịch chạy đúng giờ khi máy ngủ.
+# Xem log Tunnel
+docker compose -f compose.yaml -f compose.tunnel.yaml logs --tail=100 tunnel
 
-| Timer | Lịch giờ Việt Nam |
-|---|---|
-| Backup | 02:00 mỗi ngày |
-| Nhắc hạn | 08:00 mỗi ngày |
-| Monitor | Mỗi 5 phút |
-
-Monitor kiểm tra web/API, dung lượng đĩa và độ mới backup (<26 giờ). Cần chạy backup lần đầu trước khi bật monitor. Log Docker xoay 3 file × 10 MB/container. Chưa cấu hình cảnh báo gửi ra ngoài.
-
-```bash
-sudo systemctl start library-backup.service
-sudo systemctl restart library-monitor.service
-sudo journalctl -u library-monitor.service -n 20 --no-pager
-systemctl show library-monitor.service -p Result -p ExecMainStatus
-```
-
-`Result=success`, `ExecMainStatus=0` là đạt; lỗi cũ còn trong journal không có nghĩa lần chạy mới vẫn lỗi.
-
-### Diễn tập phục hồi
-
-Dùng terminal riêng; không ghi đè volume production. Lệnh đầu tiên hỏi đúng tên archive hiện có:
-
-```bash
-sudo ls -lt backups/
-read -r -p 'Nhập tên file backup đầy đủ: ' backup_file
-export COMPOSE_FILE=compose.yaml
-export COMPOSE_PROJECT_NAME=thu-vien-recovery
-export HTTP_PORT=8082
-export BACKUP_DIR=./backups
-docker compose run --rm --no-deps maintenance python scripts/backup.py restore "$backup_file"
-docker compose up -d --no-build --wait
-bash scripts/smoke.sh http://localhost:8082
-```
-
-Mở http://localhost:8082 kiểm tra tài khoản, sách, ảnh, lịch sử. Restore kiểm tra checksum và từ chối volume không rỗng. Dùng source/images tương thích thời điểm backup; không gửi email từ recovery.
-
-Khi kiểm tra xong, trong terminal recovery:
-
-```bash
-docker compose down
-unset COMPOSE_FILE COMPOSE_PROJECT_NAME HTTP_PORT BACKUP_DIR
-```
-
-Chi tiết backup ngoài máy, rollback và phục hồi production: [Hướng dẫn vận hành](docs/OPERATIONS.md).
-
-## 5. HTTPS và chia sẻ qua Internet
-
-### Demo công khai bằng Cloudflare Quick Tunnel
-
-```bash
-docker compose -f compose.yaml -f compose.tunnel.yaml up -d
-docker compose -f compose.yaml -f compose.tunnel.yaml logs --tail=50 tunnel
-```
-
-Lấy link `https://...trycloudflare.com` trong log. Người ở ngoài mạng có thể truy cập khi máy bạn và Docker đang chạy. Tunnel nối tới `web:80` nội bộ, không phụ thuộc chuyển tiếp cổng 8081. Không cần cài chứng chỉ trên máy người xem.
-
-Ai có link có thể mở trang công khai và đăng ký bạn đọc; các chức năng còn lại vẫn kiểm tra quyền. Dùng dữ liệu thử khi demo. Quick Tunnel không có đảm bảo uptime và link có thể đổi khi tiến trình được khởi tạo lại; không coi là hosting production. Dừng chia sẻ:
-
-```bash
+# Dừng riêng Tunnel
 docker compose -f compose.yaml -f compose.tunnel.yaml stop tunnel
+
+# Chạy lại các dịch vụ
+docker compose -f compose.yaml -f compose.tunnel.yaml up -d --wait
+
+# Dừng toàn bộ ứng dụng và Tunnel
+docker compose -f compose.yaml -f compose.tunnel.yaml stop
 ```
 
-Nếu trước đó chạy tunnel bằng `docker run --name thu-vien-tunnel`, dừng tunnel cũ bằng `docker stop thu-vien-tunnel` trước khi chuyển sang cách Compose. Không ghi link demo tạm thời vào cấu hình API; frontend dùng đường dẫn cùng origin `/api/v1`.
+Sau mỗi lần khởi động lại Tunnel, xem log để kiểm tra địa chỉ và cập nhật `PUBLIC_ORIGIN` nếu đổi. Chế độ chạy nền không giữ ứng dụng trực tuyến khi Windows ngủ, WSL/Docker bị tắt hoặc máy mất mạng.
 
-### HTTPS chỉ trên máy cá nhân
+### 9.4. Nếu mạng QUIC thường xuyên bị ngắt
+
+Nếu sau lỗi timeout có dòng `Registered tunnel connection` mới, Tunnel đã tự kết nối lại. Chỉ khi lỗi lặp lại gây gián đoạn, có thể dừng Tunnel hiện tại rồi thử HTTP/2:
 
 ```bash
-docker compose -f compose.yaml -f compose.https-local.yaml up -d
-docker compose -f compose.yaml -f compose.https-local.yaml cp \
-  local-proxy:/data/caddy/pki/authorities/local/root.crt ./library-local-root.crt
-curl --cacert ./library-local-root.crt https://localhost:8443/api/v1/health
+docker run --rm -it \
+  --network thu-vien-so_default \
+  cloudflare/cloudflared:latest \
+  tunnel --no-autoupdate --protocol http2 --url http://web:80
 ```
 
-Caddy tạo CA nội bộ. Nếu chứng chỉ chưa xuất hiện, xem log `local-proxy` rồi thử sao chép lại. Muốn Chrome trên Windows tin cậy, mở `library-local-root.crt` bằng Windows và cài vào **Current User → Trusted Root Certification Authorities**, sau đó mở lại trình duyệt. Chỉ cài CA do chính bản Caddy của bạn tạo. Địa chỉ https://localhost:8443 không phải link chia sẻ cho máy khác.
+Đây là một lần tạo Tunnel mới, vì vậy lấy lại URL và cập nhật `.env`. Nếu chạy bằng Compose, có thể thêm `--protocol, http2` vào danh sách `command` của dịch vụ `tunnel` rồi áp dụng lại hai tệp Compose.
 
-### Máy chủ + tên miền thật
+## 10. Cấu hình email quên mật khẩu
 
-Trỏ DNS về máy chủ, cho phép TCP 80/443, cấu hình `.env`:
+Điền thông tin thật do nhà cung cấp SMTP cấp trong `.env`:
 
 ```dotenv
-COMPOSE_FILE=compose.yaml:compose.prod.yaml
-DOMAIN=library.example.edu.vn
-ACME_EMAIL=admin@example.edu.vn
-PUBLIC_ORIGIN=https://library.example.edu.vn
+PUBLIC_ORIGIN=https://TEN-TUNNEL.trycloudflare.com
+SMTP_HOST=smtp.nha-cung-cap.example
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USER=ten-dang-nhap-smtp
+SMTP_PASSWORD=mat-khau-smtp
+SMTP_FROM=thu-vien@ten-mien-cua-ban.example
 ```
 
-Thay bằng tên miền/email thật rồi chạy `docker compose up -d --build --wait`. Caddy cấp/gia hạn chứng chỉ; giữ volume chứng chỉ. Kiểm tra `bash scripts/smoke.sh https://TEN_MIEN_THAT` mà không dùng `curl -k`. Đọc [OPERATIONS.md](docs/OPERATIONS.md) trước khi triển khai máy chủ.
+Các giá trị trên là mẫu, không dùng để gửi email thật. `SMTP_FROM` phải là địa chỉ được nhà cung cấp cho phép. Nếu nhà cung cấp yêu cầu SMTP SSL cổng 465, dùng `SMTP_PORT=465` và `SMTP_SECURITY=ssl`. Một số dịch vụ yêu cầu mật khẩu ứng dụng thay cho mật khẩu đăng nhập thông thường.
 
-## 6. CI/CD
+Áp dụng lại Compose theo chế độ đang chạy ở mục 7 hoặc 9.3. Thử chức năng **Quên mật khẩu** bằng email của tài khoản đang tồn tại; kiểm tra hộp thư và thư rác. Liên kết phải dùng URL công khai hiện tại. Việc hiện thông báo đã tiếp nhận yêu cầu không tự chứng minh email đã gửi thành công.
 
-Workflow [.github/workflows/devops.yml](.github/workflows/devops.yml):
+## 11. Sao lưu và kiểm thử
 
-- **Push main / PR:** kiểm thử Python, tích hợp UI/API, Node API client; build Docker; khởi động Compose; smoke test; backup; lưu artifact source và images đã kiểm thử (14 ngày).
-- **Triển khai:** chỉ khi chạy `workflow_dispatch` trên main với `deploy=true`. Push code không tự triển khai máy chủ.
-- GitHub Environment `production`; secrets `DEPLOY_TARGET` (`user@host`), `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`; variable `PUBLIC_URL`.
-- Máy chủ phải bootstrap trước tại `/opt/thu-vien-so`, có `.env` production và secrets riêng. Deployment dừng ghi, backup, nạp images đã test, migrate, chạy lại và kiểm tra HTTPS.
-- Không bật deploy khi mới có WSL/Quick Tunnel; đó không phải máy chủ SSH đã cấu hình cho pipeline.
-
-Dependencies Python được chốt trong `requirements.lock`. Base images dùng tag; cần chốt digest và kiểm thử trên nền tảng đích cho vận hành production nghiêm ngặt. Xem kết quả CI thực tế trong tab **Actions**, không suy luận CI đạt chỉ vì file workflow tồn tại.
-
-## 7. Kiểm thử
+Sao lưu dữ liệu Docker:
 
 ```bash
-python -m unittest discover -s tests -v
-PYTHONPATH=. python qa/integration_test.py
-node qa/api_client_test.mjs
+bash devops/scripts/ops.sh backup
 ```
 
-Dùng Python environment đã cài `requirements.lock`, Node 24 cho test JavaScript. Tests sử dụng database tạm; không chạy script demo trên dữ liệu thật. OpenAPI tĩnh nằm ở [docs/openapi.json](docs/openapi.json); test tích hợp so sánh với mã nguồn.
+Script tạm dừng backend trong lúc sao lưu, sau đó chạy lại. Bản sao lưu gồm SQLite, ảnh bìa và dữ liệu ebook, mặc định nằm trong `backups/`. Nên sao chép bản sao lưu sang nơi khác nếu cần bảo vệ trước sự cố ổ đĩa.
 
-Kiểm tra thủ công trước khi nghiệm thu:
-
-1. Thủ thư tạo tác giả/chủ đề, đầu sách, bản sách có mã vạch và ảnh bìa.
-2. Bạn đọc tìm sách, đặt mượn; thử hết sách và vượt 3 cuốn.
-3. Thủ thư xác nhận giao; bạn đọc thấy hạn trả.
-4. Thủ thư nhận trả; số bản còn và lịch sử cập nhật, tiền phạt tính theo hạn.
-5. Kiểm tra quyền: bạn đọc không quản lý danh mục và không xem lịch sử người khác.
-6. Thử backup/restore, email SMTP và health qua địa chỉ HTTPS.
-
-Browser test tùy chọn: cài Playwright/Chromium, chạy demo mới riêng rồi chạy `python qa/browser_test.py`. Kịch bản thay đổi dữ liệu demo; không chạy trên production.
-
-## 8. Khắc phục lỗi thường gặp
-
-| Triệu chứng | Kiểm tra / xử lý |
-|---|---|
-| `200/CHDIR` trong systemd | Chạy lại `sudo bash scripts/install-timers.sh` từ checkout đang dùng |
-| `Unit docker.service not found` trên WSL | Đảm bảo Docker Desktop chạy, `sudo docker info` thành công; chạy installer ở trên |
-| Tạo thủ thư lỗi Unicode | Kiểm tra UTF-8/bộ gõ, thử tên không dấu |
-| SMTP không đăng nhập được | Đúng tài khoản; Gmail dùng app password, không dùng mật khẩu thường; thử script SMTP và đọc mã lỗi |
-| `FileNotFoundError` khi restore | Dùng đúng tên archive trong `backups/`, không dùng chữ tên mẫu |
-| Restore yêu cầu volume rỗng | Dùng project recovery riêng; không xóa volume chính |
-| Monitor báo lỗi backup cũ | Chạy backup, kiểm tra log và mốc thời gian archive |
-
-Nếu 8081 bị reset nhưng container healthy:
+Để chạy bộ kiểm tra mã nguồn, cài Python, các thư viện trong `requirements.lock`, Node.js và npm, sau đó:
 
 ```bash
-docker compose -p thu-vien-so -f compose.yaml port web 80
-docker compose -p thu-vien-so -f compose.yaml exec -T web wget -qO- http://web:80/api/v1/health
-curl -4 --noproxy '*' --max-time 10 http://127.0.0.1:8081/api/v1/health
+source .venv/bin/activate
+bash devops/scripts/check.sh
 ```
 
-Nếu nội bộ tốt, thử tạo lại riêng web (gián đoạn ngắn, giữ dữ liệu):
+Script chạy kiểm thử backend, DevOps, tích hợp, kiểm tra JavaScript và cú pháp các script Bash. Kiểm thử này không thay thế việc thử gửi email SMTP thật hoặc truy cập Tunnel từ Internet.
 
-```bash
-docker compose -p thu-vien-so -f compose.yaml up -d --no-deps --force-recreate web
-```
+## 12. Lỗi thường gặp
 
-Cảnh báo orphan có thể là proxy/tunnel từ Compose bổ sung; không xóa hàng loạt khi chưa biết container nào đang dùng. Dòng health nội bộ thành công không thay thế kiểm tra từ trình duyệt bên ngoài.
+| Hiện tượng | Cách xử lý |
+| --- | --- |
+| `address already in use` trên 8081 | Có dịch vụ đang giữ cổng. Dừng bản Docker hoặc Uvicorn cũ trước khi khởi động bản khác. |
+| `UNIQUE constraint failed: users.email` | Email đã tồn tại. Lệnh CLI chỉ tạo mới; dùng giao diện quản trị để sửa tài khoản. |
+| Tạo tài khoản nhưng không đăng nhập được ở bản khác | Kiểm tra có đang dùng nhầm dữ liệu Python và Docker hay không. |
+| Tunnel báo 502 | Kiểm tra health nội bộ, trạng thái `web`/`backend`, tên mạng Docker và đích `http://web:80`. |
+| Timeout QUIC rồi đăng ký kết nối lại | Tunnel đã tự phục hồi; chỉ đổi giao thức nếu lỗi liên tục. |
+| Link quên mật khẩu trỏ về localhost | Sửa `PUBLIC_ORIGIN`, áp dụng lại Compose, rồi yêu cầu email mới. |
+| Không nhận được email | Kiểm tra SMTP, thư rác và log backend; không chia sẻ mật khẩu SMTP trong log/chụp màn hình. |
+| `migrate` không còn chạy | Bình thường nếu kết thúc mã 0; nếu lỗi, xem log `migrate`. |
+| Cảnh báo orphan container | Kiểm tra có container cấu hình cũ hoặc đang bỏ sót tệp Compose Tunnel; dùng nhất quán các tệp Compose của chế độ đã chọn. |
+| `/favicon.ico` trả 404 | Thiếu biểu tượng tab; riêng lỗi này không đồng nghĩa API hoặc trình đọc bị hỏng. |
 
-## 9. Cấu trúc và giới hạn
+## 13. Tài liệu tham khảo
 
-| Đường dẫn | Nội dung |
-|---|---|
-| `frontend/` | Giao diện hai vai trò, API client, cấu hình cùng origin |
-| `app/`, `serve.py`, `demo.py` | API, CLI, phục vụ UI trực tiếp, dữ liệu demo riêng |
-| `migrations/` | Schema SQL; hiện phiên bản 1 |
-| `tests/`, `qa/` | Nghiệp vụ, DevOps, tích hợp và browser test |
-| `Dockerfile`, `frontend/Dockerfile` | Images backend và web |
-| `compose*.yaml`, `deploy/`, `scripts/` | Triển khai, HTTPS, tunnel, SMTP, backup và systemd |
-| `docs/` | ERD, API, đối chiếu màn hình, hướng dẫn vận hành |
+- Cloudflare Quick Tunnels: https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
+- Tham số chạy cloudflared: https://developers.cloudflare.com/tunnel/reference/run-parameters/
+- Cấu hình giao thức Tunnel: https://developers.cloudflare.com/tunnel/configuration/
 
-Tài liệu: [ERD](docs/ERD.md) · [API](docs/API.md) · [Đối chiếu Front end/API](docs/FRONTEND_API_MAPPING.md) · [Vận hành](docs/OPERATIONS.md).
-
-Giới hạn MVP: chưa có reset mật khẩu/xác minh email/rate limit đăng nhập; hàng đợi FIFO cần người đứng đầu tự đặt, chưa tự hết hạn lượt chờ; chưa có gia hạn, mất/hỏng sách hay thanh toán online. Mã vạch nhập tay hoặc bằng máy quét kiểu bàn phím, chưa quét camera. Tìm kiếm tiếng Việt phân biệt dấu; danh sách một số loại chưa phân trang. Cần bổ sung biện pháp vận hành và bảo mật tương ứng trước khi dùng với dữ liệu thật ở quy mô lớn.
-
-Tài liệu chính thức: [Docker Compose](https://docs.docker.com/compose/) · [Caddy HTTPS](https://caddyserver.com/docs/automatic-https) · [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/) · [Google app passwords](https://support.google.com/accounts/answer/185833).
+README mô tả cấu hình có trong ba gói Backend_Ebook, Frontend_Ebook và DevOps_Ebook đã đối chiếu. URL `trycloudflare.com` được tạo trong mỗi lần chạy, không phải địa chỉ cố định đi kèm mã nguồn.

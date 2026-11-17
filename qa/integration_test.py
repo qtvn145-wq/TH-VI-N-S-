@@ -1,31 +1,28 @@
-import os, tempfile, unittest, json, io
+import io,json,os,tempfile,unittest
 from pathlib import Path
-scratch=tempfile.TemporaryDirectory()
-os.environ['DATABASE_PATH']=scratch.name+'/test.sqlite3'
-os.environ['MEDIA_DIR']=scratch.name+'/covers'
+from unittest.mock import patch
+import pypdfium2 as pdfium
 from fastapi.testclient import TestClient
 from serve import app
-from app.db import connect
-from app.security import password_hash
-from PIL import Image
-class FrontendIntegration(unittest.TestCase):
- def test_full_flow(self):
-  with TestClient(app) as c:
-   self.assertEqual(c.get('/').status_code,200)
-   for file in ['app.js','api.js','config.js','style.css']: self.assertEqual(c.get('/ui/'+file).status_code,200)
-   with connect(True) as db: db.execute('INSERT INTO users(email,name,password_hash,role) VALUES (?,?,?,?)',('staff@test.local','Thủ thư',password_hash('Testing2026!'),'librarian'))
-   def login(email): return {'Authorization':'Bearer '+c.post('/api/v1/auth/login',json={'email':email,'password':'Testing2026!'}).json()['access_token']}
-   c.post('/api/v1/auth/register',json={'email':'reader@test.local','name':'Bạn đọc','password':'Testing2026!'})
-   s=login('staff@test.local');r=login('reader@test.local')
-   b=c.post('/api/v1/books',headers=s,json={'title':'Sách kiểm tra'}).json()
-   c.post(f"/api/v1/books/{b['id']}/copies",headers=s,json={'barcode':'BAR-001'})
-   loan=c.post('/api/v1/loans',headers=r,json={'book_id':b['id']}).json()
-   self.assertEqual(loan['book_title'],'Sách kiểm tra');self.assertEqual(loan['barcode'],'BAR-001');self.assertEqual(loan['reader_name'],'Bạn đọc')
-   self.assertEqual(c.post(f"/api/v1/loans/{loan['id']}/handover",headers=s).json()['status'],'borrowed')
-   self.assertEqual(c.post(f"/api/v1/loans/{loan['id']}/return",headers=s).json()['status'],'returned')
-   out=io.BytesIO();Image.new('RGB',(10,10)).save(out,'PNG')
-   result=c.post(f"/api/v1/books/{b['id']}/cover",headers=s,files={'file':('cover.png',out.getvalue(),'image/png')})
-   self.assertEqual(result.status_code,200);self.assertEqual(c.get(result.json()['cover_url']).status_code,200)
-   self.assertEqual(c.post('/api/v1/books',headers=r,json={'title':'Forbidden'}).status_code,403)
-   schema=json.loads(Path('docs/openapi.json').read_text());self.assertEqual(schema,app.openapi())
-if __name__=='__main__': unittest.main()
+from backend.app.db import connect
+from backend.app.security import password_hash
+
+class Integration(unittest.TestCase):
+ def test_upload_read_and_progress_with_frontend_assets(self):
+  with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,{'DATABASE_PATH':temp+'/db','EBOOK_DIR':temp+'/ebooks','AUTO_MIGRATE':'true'}),TestClient(app) as c:
+   index=c.get('/');self.assertEqual(index.status_code,200)
+   for asset in ['src/app.js','src/api.js','src/reader.js','config.js','styles/style.css']:
+    self.assertEqual(c.get('/ui/'+asset).status_code,200)
+   for asset in ['/ui/src/app.js','/ui/styles/style.css']:
+    self.assertIn(asset,index.text)
+   with connect(True) as db: db.execute("INSERT INTO users(email,name,password_hash,role) VALUES (?,?,?,'librarian')",('staff@test.local','Staff',password_hash('Testing2026!')))
+   headers={'Authorization':'Bearer '+c.post('/api/v1/auth/login',json={'email':'staff@test.local','password':'Testing2026!'}).json()['access_token']}
+   b=c.post('/api/v1/books',headers=headers,json={'title':'Integration eBook'}).json()['id']
+   with pdfium.PdfDocument.new() as pdf:
+    pdf.new_page(200,300).close();pdf.new_page(200,300).close();out=io.BytesIO();pdf.save(out)
+   meta=c.post(f'/api/v1/books/{b}/ebook',headers=headers,files={'file':('sample.pdf',out.getvalue(),'application/pdf')}).json()
+   self.assertEqual(c.get(f'/api/v1/books/{b}/pages/2',params={'v':meta['revision']}).status_code,200)
+   self.assertEqual(c.put(f'/api/v1/books/{b}/progress',headers=headers,json={'page':2,'revision':meta['revision']}).status_code,200)
+   self.assertEqual(c.get(f'/api/v1/books/{b}/progress',headers=headers).json()['page'],2)
+   self.assertEqual(json.loads(Path('docs/openapi.json').read_text()),app.openapi())
+if __name__=='__main__':unittest.main()
